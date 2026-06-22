@@ -1,5 +1,5 @@
 ---
-title: 项目复盘
+title: 项目记录
 description: 用 STAR 结构整理每个项目的可讲述材料。
 ---
 

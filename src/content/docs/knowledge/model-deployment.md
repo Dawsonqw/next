@@ -10,7 +10,7 @@ description: 深度学习基础、模型格式和端到端部署链路。
 - CNN 常见算子：Conv、Pooling、BN、ReLU、Gemm、Softmax。
 - 模型转换、图优化、量化、推理运行时、profiling 和部署校验。
 
-## 面试追问
+## 可能问法
 
 - ONNX 图结构由哪些部分组成？
 - Caffe 到 ONNX 转换最容易出错的地方是什么？

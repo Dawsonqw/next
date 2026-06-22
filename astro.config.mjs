@@ -2,9 +2,11 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
+  site: 'https://dawsonqw.github.io',
+  base: '/next',
   integrations: [
     starlight({
-      title: '面试防穿透知识库',
+      title: '技术学习笔记',
       social: [
         {
           icon: 'github',
@@ -38,12 +40,12 @@ export default defineConfig({
           ],
         },
         {
-          label: 'Interview',
+          label: 'Review',
           items: [
-            { label: '简历防穿透表', slug: 'interview/resume-defense' },
-            { label: '项目复盘', slug: 'interview/project-retrospectives' },
-            { label: '面试题总清单', slug: 'interview/question-bank' },
-            { label: '边界表达原则', slug: 'interview/boundary-expression' },
+            { label: '资料映射表', slug: 'review/source-map' },
+            { label: '项目记录', slug: 'review/project-notes' },
+            { label: '问答清单', slug: 'review/question-set' },
+            { label: '边界说明', slug: 'review/boundary-notes' },
           ],
         },
         {

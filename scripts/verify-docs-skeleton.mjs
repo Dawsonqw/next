@@ -20,21 +20,21 @@ const requiredFiles = [
   'src/content/docs/knowledge/llm-inference.md',
   'src/content/docs/knowledge/agent-rag-memory.md',
   'src/content/docs/knowledge/opengl-2d.md',
-  'src/content/docs/interview/resume-defense.md',
-  'src/content/docs/interview/project-retrospectives.md',
-  'src/content/docs/interview/question-bank.md',
-  'src/content/docs/interview/boundary-expression.md',
+  '.github/workflows/deploy.yml',
+  'src/content/docs/review/source-map.md',
+  'src/content/docs/review/project-notes.md',
+  'src/content/docs/review/question-set.md',
+  'src/content/docs/review/boundary-notes.md',
   'src/content/docs/templates/daily-learning.md',
   'src/content/docs/templates/weekly-review.md',
   'src/content/docs/templates/ai-fill-prompt.md',
-  'reference/简历面试学习计划.md',
 ];
 
 const configMarkers = [
-  '面试防穿透知识库',
+  '技术学习笔记',
   'Roadmap',
   'Knowledge',
-  'Interview',
+  'Review',
   'Templates',
 ];
 

@@ -10,7 +10,7 @@ description: C++、并发、Linux 系统开发和工程工具链托底。
 - Linux 进程、线程、文件描述符、IO 多路复用、Socket、epoll、性能排查工具。
 - Git、Docker、CMake、Shell、单元测试、日志、异常处理和 CI 基础。
 
-## 面试追问
+## 可能问法
 
 - RAII 解决什么问题？
 - `unique_ptr`、`shared_ptr`、`weak_ptr` 如何取舍？

@@ -10,7 +10,7 @@ description: Transformer、KV Cache、投机采样和 LLM 量化。
 - 投机采样中的 draft model、target model、批量验证、接受率判断和 token 回退生成。
 - 动态 shape、batch 维度构造和 KV Cache 复用。
 
-## 面试追问
+## 可能问法
 
 - KV Cache 为什么能加速 decode？
 - 投机采样为什么能保证分布正确？

@@ -10,7 +10,7 @@ description: RKNN、STM32 NPU、fallback 和平台适配。
 - STM32 NPU / MCU AI 的资源约束和部署边界。
 - NPU 不支持算子、CPU fallback、输入输出预处理 / 后处理对齐。
 
-## 面试追问
+## 可能问法
 
 - 端侧部署和服务器部署的主要差异是什么？
 - NPU 平台不支持某个算子时怎么办？

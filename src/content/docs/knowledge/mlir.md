@@ -11,7 +11,7 @@ description: Dialect、Conversion Pattern、Pattern Rewrite 和模型编辑。
 - Pattern Rewrite、Pass、子图模式匹配和图结构改写。
 - MLIR IR 算子增删改查、裁剪、合并和结构调整。
 
-## 面试追问
+## 可能问法
 
 - 为什么模型部署工具链会用 MLIR？
 - Dialect 的职责是什么？
