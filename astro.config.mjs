@@ -51,6 +51,7 @@ export default defineConfig({
           label: 'Review',
           items: [
             { label: '资料映射表', slug: 'review/source-map' },
+            { label: '官方学习资料索引', slug: 'review/official-learning-sources' },
             { label: '项目记录', slug: 'review/project-notes' },
             { label: '问答清单', slug: 'review/question-set' },
             { label: '扩展问答清单', slug: 'review/question-set-expanded' },
