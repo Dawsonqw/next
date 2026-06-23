@@ -85,15 +85,19 @@ ONNX 是模型交换格式，不是某一个训练框架的运行时。学习 ON
 
 至少做三类检查：
 
-```bash
-python -m onnx.checker model.onnx
-python -m onnx.shape_inference model.onnx inferred.onnx
-python - <<'PY'
+```python
+import onnx
 import onnxruntime as ort
+
+model = onnx.load("model.onnx")
+onnx.checker.check_model(model)
+
+inferred = onnx.shape_inference.infer_shapes(model)
+onnx.save(inferred, "model.inferred.onnx")
+
 sess = ort.InferenceSession("model.onnx", providers=["CPUExecutionProvider"])
 print(sess.get_inputs())
 print(sess.get_outputs())
-PY
 ```
 
 `onnx.checker` 只能证明模型结构满足 ONNX 规则，不能证明转换语义正确；shape inference 可以暴露部分维度问题，但对动态 shape、特殊算子、未知维度并不总是充分。
