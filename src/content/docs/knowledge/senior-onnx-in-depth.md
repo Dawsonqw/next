@@ -21,6 +21,7 @@ shape inference 能做什么，不能做什么？
 external data 为什么存在？
 ONNX Runtime 的 Execution Provider 如何决定节点运行在哪个硬件？
 为什么同一个 ONNX 在不同 runtime / EP 上性能和数值可能不同？
+QDQ 和 QOperator 到底是 graph 表达差异，还是硬件执行差异？
 ```
 
 如果只会说“把模型转成 ONNX”，面试官追问 Caffe 到 ONNX、ONNX 到 NPU、INT8 QDQ、动态 shape、算子不支持时，就会明显不够。
@@ -174,6 +175,36 @@ ONNX graph 里有多个命名空间：value、node、graph、operator、attribut
 
 如果不理解命名空间和 SSA，手写 graph surgery 很容易生成“checker 能发现的坏图”或“checker 发现不了但语义错的图”。
 
+### 4.1 Graph surgery 的安全步骤
+
+手工改 ONNX 图时，建议按这个 checklist：
+
+```text
+1. 读取 model，保存原始模型 hash
+2. 检查 ir_version / opset_import
+3. 建立 producer/consumer map
+4. 确认要替换的 node/subgraph 边界
+5. 新增 initializer 时检查 value name 是否冲突
+6. 替换 input/output 时更新所有 consumer
+7. 删除 dead nodes 和 orphan initializers
+8. 重新拓扑排序
+9. onnx.checker
+10. shape inference
+11. CPU runtime numerical compare
+12. target runtime compare
+```
+
+### 4.2 不要只依赖 Netron 视觉判断
+
+Netron 非常适合看图，但不能替代程序检查。视觉上看起来“连对了”，仍可能有：
+
+- dtype 错；
+- axis 错；
+- initializer 重名；
+- value_info 过期；
+- opset 不兼容；
+- graph input/default initializer 语义变化。
+
 ## 5. Opset：ONNX 语义的时间维度
 
 ### 5.1 为什么 opset 是核心
@@ -196,10 +227,21 @@ op_type 相同，不代表语义完全相同。
 | BatchNormalization | training/inference 属性和输出数量变化 |
 | Slice | 从 attribute 表达逐渐转为 input 表达，动态化后后端支持变复杂 |
 | TopK / NonMaxSuppression | 输出类型、排序、动态 shape 影响部署 |
+| Cast / QuantizeLinear | dtype 支持、量化类型和 opset 兼容性 |
 
 ### 5.3 高级面试答法
 
 > opset 不是文件版本号，而是算子语义版本。导出 ONNX 时要选择目标 runtime 支持的 opset；降 opset 或升 opset 都可能改变某些 op 的属性表达或默认行为。因此转换验证不能只看 checker 通过，还要用代表性输入做数值对齐和任务指标验证。
+
+### 5.4 Opset 选择策略
+
+| 场景 | 策略 |
+|---|---|
+| 通用服务器 ORT | 选择 ORT 当前支持良好、工具链稳定的 opset |
+| TensorRT | 选择 TensorRT parser 支持范围内的 opset，避免复杂 dynamic op |
+| NPU converter | 以厂商 converter 支持矩阵为准，必要时降 opset |
+| QDQ 量化 | 确认 QuantizeLinear/DequantizeLinear 版本和量化 dtype 支持 |
+| 自定义 op | 单独 domain，记录版本和 fallback 策略 |
 
 ## 6. Shape Inference：能帮忙，但不能迷信
 
@@ -243,6 +285,18 @@ onnx.checker
   -> profiling / fallback check
 ```
 
+### 6.4 Shape debug 表格
+
+排查 shape 问题时，不要只看错误栈。建议生成表格：
+
+| node_name | op_type | input_shapes | output_shapes | inferred? | dynamic_dims |
+|---|---|---|---|---|---|
+| conv1 | Conv | `[1,3,224,224]` | `[1,32,112,112]` | yes | none |
+| reshape7 | Reshape | `[1,256,7,7], [?]` | unknown | no | target shape runtime |
+| concat9 | Concat | `[1,N,64], [1,5,64]` | `[1,?,64]` | partial | N+5 not represented |
+
+这种表格比“shape inference failed”更适合工程定位。
+
 ## 7. ONNX Checker：合法性不是正确性
 
 `onnx.checker` 可以检查模型是否符合 ONNX 结构规则，例如字段、类型、图约束等。
@@ -276,6 +330,17 @@ model.onnx 和 external weight files 必须一起发布
 hash/size 应进入产物校验
 CI 要验证缺文件时能明确失败
 ```
+
+### 8.1 发布 checklist
+
+| 检查项 | 原因 |
+|---|---|
+| model 文件 hash | 防止模型被错误覆盖 |
+| external data 文件 hash | 防止权重文件缺失或错配 |
+| 相对路径检查 | 部署目录变化后仍能加载 |
+| 文件大小检查 | 判断是否是 Git LFS pointer 或截断文件 |
+| onnx.load 测试 | 验证 external data 能被解析 |
+| runtime session 测试 | 验证部署环境能加载完整模型 |
 
 ## 9. ONNX Runtime Execution Provider：硬件执行不是整体切换
 
@@ -314,6 +379,25 @@ providers = ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecution
 - 对比 CPU-only / target EP latency；
 - 统计 fallback 节点。
 
+### 9.2 EP 选择决策树
+
+```text
+如果目标是最快 GPU 推理：
+  优先 TensorRT EP / CUDA EP
+  检查 TensorRT parser 支持和 engine build 开销
+
+如果目标是端侧 NPU：
+  优先厂商 EP / vendor runtime
+  检查 op coverage、static shape、INT8 支持
+
+如果目标是跨平台可运行：
+  CPU EP 保底
+  性能优化交给平台特定 EP
+
+如果模型含很多 unsupported op：
+  改图 / plugin / fallback / 换模型结构
+```
+
 ## 10. ONNX Runtime Graph Optimization
 
 ### 10.1 优化层级
@@ -323,7 +407,7 @@ ORT 官方将优化分成 Basic、Extended、Layout 三类。
 | 层级 | 典型优化 | 工程影响 |
 |---|---|---|
 | Basic | constant folding、冗余节点消除、Conv+BN fusion | 所有 EP 前执行，通常语义保持且收益稳定 |
-| Extended | GELU、LayerNorm、Attention 等融合 | 依赖 EP 支持，更贴近模型结构 |
+| Extended | GELU、LayerNorm、Attention 等融合 | 依赖特定 execution provider |
 | Layout | NCHWc 等 layout 优化 | 性能可能提升，但 debug 和逐层对齐更复杂 |
 
 ### 10.2 online vs offline
@@ -392,6 +476,16 @@ QuantizeLinear -> DequantizeLinear -> Op -> QuantizeLinear -> DequantizeLinear
 - 只有 runtime 识别并 fuse/lower 到 quantized kernel，才会加速；
 - 否则 Q/DQ 可能成为额外开销。
 
+### 11.4 QDQ debug 关注点
+
+| 问题 | 排查 |
+|---|---|
+| QDQ 数量很多但不加速 | 查看 runtime 是否 fusion/lowering 到量化 kernel |
+| 某层精度掉点 | 检查该层输入输出 scale、zero_point、calibration histogram |
+| QDQ 跨 layout transform | 看 Q/DQ 是否阻断 fusion |
+| NPU 不支持某种量化 | 检查 symmetric/asymmetric、per-channel、dtype 支持 |
+| QAT 导出后 runtime 不识别 | 检查 QDQ pattern 是否符合 backend 预期 |
+
 ## 12. 常见 ONNX 转换问题：从 Caffe/PyTorch 到 ONNX
 
 ### 12.1 Caffe 到 ONNX
@@ -440,7 +534,57 @@ QuantizeLinear -> DequantizeLinear -> Op -> QuantizeLinear -> DequantizeLinear
 | Quantize/Dequantize 后 | scale/zero_point/calibration |
 | target EP 才出错 | EP kernel、fallback、dtype、动态 shape |
 
-## 14. 高级面试追问
+### 13.3 对齐报告模板
+
+```text
+Model: xxx.onnx
+Opset: ai.onnx:17
+Runtime: onnxruntime 1.xx
+Providers: TensorRT, CUDA, CPU
+Input preprocessing: RGB, resize bilinear, mean/std
+
+Checkpoints:
+- PyTorch vs ONNX CPU: pass / fail
+- ONNX CPU vs ONNX target EP: pass / fail
+- FP32 vs INT8: pass / fail
+- Optimized graph vs original graph: pass / fail
+
+First divergence:
+- node: xxx
+- op_type: Conv / Reshape / QDQ / etc
+- input shape/dtype:
+- output shape/dtype:
+- max diff:
+- cosine:
+- suspected cause:
+- next action:
+```
+
+## 14. ONNX 与 NPU 的接口边界
+
+NPU 工具链常常不是直接“运行 ONNX”，而是：
+
+```text
+ONNX graph
+  -> vendor converter
+  -> vendor IR/blob
+  -> runtime
+  -> driver
+  -> NPU hardware
+```
+
+ONNX 在这里的角色是 source IR，不是最终执行格式。你要关注：
+
+- vendor converter 支持的 opset；
+- supported operator list；
+- supported dtype；
+- supported layout；
+- dynamic shape 限制；
+- quantization format；
+- fallback 是否允许；
+- converter log 是否说明 subgraph partition。
+
+## 15. 高级面试追问
 
 1. ONNX IR 里 ModelProto、GraphProto、NodeProto、TensorProto 分别负责什么？
 2. ONNX graph 为什么要求拓扑有序和 SSA？
@@ -456,8 +600,10 @@ QuantizeLinear -> DequantizeLinear -> Op -> QuantizeLinear -> DequantizeLinear
 12. Caffe BN+Scale 到 ONNX 为什么容易错？
 13. 逐层 dump 层名对不上怎么办？
 14. 优化后图节点融合了，还怎么定位精度问题？
+15. ONNX 到 NPU converter 报 unsupported op 时有哪些选择？
+16. 为什么 Netron 看起来对，但 runtime 输出仍可能错？
 
-## 15. 工程实践任务
+## 16. 工程实践任务
 
 1. 用 `onnx.load` 打印 ModelProto 的 ir_version 和 opset_import。
 2. 遍历 graph node，统计 op_type 和 domain。
@@ -469,8 +615,10 @@ QuantizeLinear -> DequantizeLinear -> Op -> QuantizeLinear -> DequantizeLinear
 8. 生成 QDQ 量化模型，统计 QuantizeLinear / DequantizeLinear 数量。
 9. 对 FP32 与 QDQ 模型做中间层 dump。
 10. 把 external data 文件移走，验证部署校验是否能失败并给出明确错误。
+11. 手写一个小的 graph surgery：删除 Identity，并验证 checker + 数值一致。
+12. 写一个 ONNX 质量检查脚本，输出 opset、op histogram、dynamic dims、external data、unsupported ops。
 
-## 16. 资料入口
+## 17. 资料入口
 
 - ONNX IR Specification：https://onnx.ai/onnx/repo-docs/IR.html
 - ONNX Shape Inference：https://onnx.ai/onnx/repo-docs/ShapeInference.html
